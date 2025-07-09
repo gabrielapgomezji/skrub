@@ -425,15 +425,26 @@ class ToDatetime(SingleColumnTransformer):
         return sbd.cast(column, self.output_dtype_)
 
     def _get_datetime_format(self, column):
-        if self.format is not None:
+        if self.format is None:
+            not_null = sbd.drop_nulls(column)
+            sample = sbd.sample(
+                not_null, n=min(_SAMPLE_SIZE, sbd.shape(not_null)[0]), seed=0
+            )
+            if not sbd.is_string(sample):
+                return None
+            return _guess_datetime_format(sample)
+        # User supplied a single format
+        if isinstance(self.format, str):
             return self.format
+        # User supplied a list of formats
         not_null = sbd.drop_nulls(column)
-        sample = sbd.sample(
-            not_null, n=min(_SAMPLE_SIZE, sbd.shape(not_null)[0]), seed=0
-        )
-        if not sbd.is_string(sample):
-            return None
-        return _guess_datetime_format(sample)
+        for fmt in self.format:
+            try:
+                sbd.to_datetime(not_null, format=fmt, strict=True)
+                return fmt
+            except Exception:
+                continue
+        return None
 
 
 def _guess_datetime_format(column):
